@@ -30,5 +30,5 @@ def main():
     torch.multiprocessing.spawn(worker, args=(), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
-    print("t")
+    print("test branch")
     main()
