@@ -1,0 +1,15 @@
+*.py[cod]
+*.so
+*.egg
+*.egg-info
+*.pth
+*.png
+*.jpg
+dist
+data
+build
+.history
+__pycache__
+workdir
+*.swp
+.ipynb_checkpoints
