@@ -716,7 +716,7 @@ class Decoder(nn.Module):
         return h
 
 
-class AutoencodingEngine(AbstractAutoencoder):
+class AutoencodingEngine(nn.Module):
     """
     Base class for all image autoencoders that we train, like VQGAN or AutoencoderKL
     (we also restore them explicitly as special cases for legacy reasons).
@@ -726,63 +726,64 @@ class AutoencodingEngine(AbstractAutoencoder):
     def __init__(
         self,
         *args,
-        encoder_config: Dict,
-        decoder_config: Dict,
-        loss_config: Dict,
-        regularizer_config: Dict,
-        optimizer_config: Union[Dict, None] = None,
-        lr_g_factor: float = 1.0,
-        trainable_ae_params: Optional[List[List[str]]] = None,
-        ae_optimizer_args: Optional[List[dict]] = None,
-        trainable_disc_params: Optional[List[List[str]]] = None,
-        disc_optimizer_args: Optional[List[dict]] = None,
-        disc_start_iter: int = 0,
-        diff_boost_factor: float = 3.0,
-        ckpt_engine: Union[None, str, dict] = None,
-        ckpt_path: Optional[str] = None,
-        additional_decode_keys: Optional[List[str]] = None,
-        **kwargs,
+        encoder,
+        decoder,
+        # loss_config: Dict,
+        # regularizer_config: Dict,
+        # optimizer_config: Union[Dict, None] = None,
+        # lr_g_factor: float = 1.0,
+        # trainable_ae_params: Optional[List[List[str]]] = None,
+        # ae_optimizer_args: Optional[List[dict]] = None,
+        # trainable_disc_params: Optional[List[List[str]]] = None,
+        # disc_optimizer_args: Optional[List[dict]] = None,
+        # disc_start_iter: int = 0,
+        # diff_boost_factor: float = 3.0,
+        # ckpt_engine: Union[None, str, dict] = None,
+        # ckpt_path: Optional[str] = None,
+        # additional_decode_keys: Optional[List[str]] = None,
+        # **kwargs,
     ):
-        super().__init__(*args, **kwargs)
+        super().__init__()
         self.automatic_optimization = False  # pytorch lightning
 
-        self.encoder: torch.nn.Module = instantiate_from_config(encoder_config)
-        self.decoder: torch.nn.Module = instantiate_from_config(decoder_config)
-        self.loss: torch.nn.Module = instantiate_from_config(loss_config)
-        self.regularization: AbstractRegularizer = instantiate_from_config(
-            regularizer_config
-        )
-        self.optimizer_config = default(
-            optimizer_config, {"target": "torch.optim.Adam"}
-        )
-        self.diff_boost_factor = diff_boost_factor
-        self.disc_start_iter = disc_start_iter
-        self.lr_g_factor = lr_g_factor
-        self.trainable_ae_params = trainable_ae_params
-        if self.trainable_ae_params is not None:
-            self.ae_optimizer_args = default(
-                ae_optimizer_args,
-                [{} for _ in range(len(self.trainable_ae_params))],
-            )
-            assert len(self.ae_optimizer_args) == len(self.trainable_ae_params)
-        else:
-            self.ae_optimizer_args = [{}]  # makes type consitent
+        self.encoder: torch.nn.Module = encoder
+        self.decoder: torch.nn.Module = decoder
+        # self.loss: torch.nn.Module = instantiate_from_config(loss_config)
 
-        self.trainable_disc_params = trainable_disc_params
-        if self.trainable_disc_params is not None:
-            self.disc_optimizer_args = default(
-                disc_optimizer_args,
-                [{} for _ in range(len(self.trainable_disc_params))],
-            )
-            assert len(self.disc_optimizer_args) == len(self.trainable_disc_params)
-        else:
-            self.disc_optimizer_args = [{}]  # makes type consitent
+        
+        # self.regularization: AbstractRegularizer = instantiate_from_config(
+        #     regularizer_config
+        # )
+        # self.optimizer_config = default(
+        #     optimizer_config, {"target": "torch.optim.Adam"}
+        # )
+        # self.diff_boost_factor = diff_boost_factor
+        # self.disc_start_iter = disc_start_iter
+        # self.lr_g_factor = lr_g_factor
+        # self.trainable_ae_params = trainable_ae_params
+        # if self.trainable_ae_params is not None:
+        #     self.ae_optimizer_args = default(
+        #         ae_optimizer_args,
+        #         [{} for _ in range(len(self.trainable_ae_params))],
+        #     )
+        #     assert len(self.ae_optimizer_args) == len(self.trainable_ae_params)
+        # else:
+        #     self.ae_optimizer_args = [{}]  # makes type consitent
 
-        if ckpt_path is not None:
-            assert ckpt_engine is None, "Can't set ckpt_engine and ckpt_path"
-            logpy.warn("Checkpoint path is deprecated, use `checkpoint_egnine` instead")
-        self.apply_ckpt(default(ckpt_path, ckpt_engine))
-        self.additional_decode_keys = set(default(additional_decode_keys, []))
+        # self.trainable_disc_params = trainable_disc_params
+        # if self.trainable_disc_params is not None:
+        #     self.disc_optimizer_args = default(
+        #         disc_optimizer_args,
+        #         [{} for _ in range(len(self.trainable_disc_params))],
+        #     )
+        #     assert len(self.disc_optimizer_args) == len(self.trainable_disc_params)
+        # else:
+        #     self.disc_optimizer_args = [{}]  # makes type consitent
+
+        # if ckpt_path is not None:
+        #     assert ckpt_engine is None, "Can't set ckpt_engine and ckpt_path"
+        #     logpy.warn("Checkpoint path is deprecated, use `checkpoint_egnine` instead")
+        # self.apply_ckpt(default(ckpt_path, ckpt_engine))
     def encode(
         self,
         x: torch.Tensor,
@@ -790,11 +791,11 @@ class AutoencodingEngine(AbstractAutoencoder):
         unregularized: bool = False,
     ) -> Union[torch.Tensor, Tuple[torch.Tensor, dict]]:
         z = self.encoder(x)
-        if unregularized:
-            return z, dict()
-        z, reg_log = self.regularization(z)
-        if return_reg_log:
-            return z, reg_log
+        # if unregularized:
+        #     return z, dict()
+        # z, reg_log = self.regularization(z)
+        # if return_reg_log:
+        #     return z, reg_log
         return z
 
     def decode(self, z: torch.Tensor, **kwargs) -> torch.Tensor:
@@ -804,6 +805,39 @@ class AutoencodingEngine(AbstractAutoencoder):
     def forward(
         self, x: torch.Tensor, **additional_decode_kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, dict]:
-        z, reg_log = self.encode(x, return_reg_log=True)
+        z = self.encode(x)
         dec = self.decode(z, **additional_decode_kwargs)
-        return z, dec, reg_log
+        return z, dec
+
+if __name__=='__main__':
+    encoder=Encoder(
+        attn_type= 'vanilla-xformers',
+        double_z= True,
+        z_channels= 8,
+        resolution= 256,
+        in_channels= 3,
+        out_ch= 3,
+        ch= 128,
+        ch_mult= [1, 2, 4, 4],
+        num_res_blocks= 2,
+        attn_resolutions= [],
+        dropout= 0.0
+    )
+    decoder=Decoder(
+        attn_type= 'vanilla-xformers',
+        double_z= True,
+        z_channels= 8,
+        resolution= 256,
+        in_channels= 3,
+        out_ch= 3,
+        ch= 128,
+        ch_mult= [1, 2, 4, 4],
+        num_res_blocks= 2,
+        attn_resolutions= [],
+        dropout= 0.0
+    )
+    VAE=AutoencodingEngine(encoder=encoder,decoder=decoder)
+    x=torch.rand((1,3,128,128))
+    z,recon=VAE
+
+
