@@ -2,6 +2,8 @@ import os
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
+
+from loss.loss import VAE_loss
 from model.model_resnet import UNet
 import torch
 import torch.nn as nn
@@ -12,7 +14,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
-save_dir='workdir/(6-13实验)pureAE_加深网络'
+from loss.regularizer import DiagonalGaussianRegularizer
+from model import VanillaVAE
+save_dir='workdir/(6-14实验)VAE_32768'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -41,13 +45,14 @@ def append_to_file(file_path, *args, sep=' ', end='\n', file_mode='a'):
 
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12358'
-    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+    os.environ['MASTER_PORT'] = '12357'
+    dist.init_process_group("gloo", rank=rank, world_size=world_size)
 
 def cleanup():
     dist.destroy_process_group()
 
-def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log):
+def validate(rank, world_size, model, dataloader,epoch,iteration,log):
+    criterion=nn.MSELoss().to(rank)
     model.eval()
     total = 0
     test_examples = None
@@ -61,10 +66,10 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log)
                 total += batch_features.size(0)
                 test_examples = batch_features.to(
                     rank)  # 将当前批次的图像数据转换为大小为 (批大小, 784) 的张量，并加载到指定的设备（CPU 或 GPU）上
-                reconstruction = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
+                reconstruction,_,_,_ = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
                 
                 val_loss+=criterion(reconstruction, batch_features)
-                # break     
+                break     
         val_loss=val_loss.to(rank)
         total=torch.tensor(total).to(rank)
         avg_loss = val_loss.item() / total.item()
@@ -77,14 +82,14 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log)
         for index in range(number):  # 遍历要显示的图像数量
             # 显示原始图
             ax = plt.subplot(2, number, index + 1)
-            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape(512, 512,3))
+            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape(128, 128,3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
             
             # 显示重构图
             ax = plt.subplot(2, number, index + 1 + number)
-            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape(512, 512,3))
+            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape(128, 128,3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -98,9 +103,9 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     os.makedirs(os.path.join(save_dir,'checkpoints'),exist_ok=True)
     os.makedirs(os.path.join(save_dir,'val_vis'),exist_ok=True)
     log=Log(os.path.join(save_dir,'log.txt'))
-
+    log('hhh')
     setup(rank, world_size)
-    resolution=(512,512)
+    resolution=(128,128)
     center_crop =False
     random_flip=False
     torch.cuda.set_device(rank)
@@ -125,36 +130,36 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     '''
     cifar10数据集
     '''
-    # train_dataset = torchvision.datasets.CIFAR10(
-    #     root="./data", train=True, transform=train_transform, download=True
-    # )  # 加载 MNIST 数据集的训练集，设置路径、转换和下载为 True
-    # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-    # train_loader = torch.utils.data.DataLoader(
-    #     train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=10
-    # )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
-    # test_dataset = torchvision.datasets.CIFAR10(
-    #     root="./data", train=False, transform=validation_transform, download=True
-    # )  # 加载 MNIST 测试数据集
+    train_dataset = torchvision.datasets.CIFAR10(
+        root="./data", train=True, transform=train_transform, download=True
+    )  # 加载 MNIST 数据集的训练集，设置路径、转换和下载为 True
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=10
+    )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
+    test_dataset = torchvision.datasets.CIFAR10(
+        root="./data", train=False, transform=validation_transform, download=True
+    )  # 加载 MNIST 测试数据集
  
-    # test_loader = torch.utils.data.DataLoader(
-    #     test_dataset, batch_size=10, shuffle=False
-    # )  # 创建一个测试数据加载器
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset, batch_size=10, shuffle=False
+    )  # 创建一个测试数据加载器
     '''
     vary数据集
     '''
-    root='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data'
-    train_dataset = ImageDataset(root,train_transform,mode='train')
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=4
-    )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
+    # root='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data'
+    # train_dataset = ImageDataset(root,train_transform,mode='train')
+    # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    # train_loader = torch.utils.data.DataLoader(
+    #     train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=4
+    # )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
 
-    test_dataset = ImageDataset(root,validation_transform,mode='test')
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=batch_size, shuffle=False,num_workers=1
-    )  # 创建一个测试数据加载器
+    # test_dataset = ImageDataset(root,validation_transform,mode='test')
+    # test_loader = torch.utils.data.DataLoader(
+    #     test_dataset, batch_size=batch_size, shuffle=False,num_workers=1
+    # )  # 创建一个测试数据加载器
     print('build model')
-    model = UNet(n_channels=3,n_classes=3).to(rank)
+    model = VanillaVAE(3,768*8,[64,125,256,512]).to(rank)
     print('build ddp')
     ddp_model = DDP(model, device_ids=[rank])
     print('build opt')
@@ -163,7 +168,8 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     warmup_scheduler = warmup.UntunedLinearWarmup(optimizer)
     print('build loss')
     # 使用均方误差（MSE）损失函数
-    criterion = nn.MSELoss().to(rank)
+    criterion = VAE_loss(0.00025).to(rank)
+    criterion2= DiagonalGaussianRegularizer()
     print('start train')
 
     iteration=0
@@ -171,6 +177,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     for epoch in range(epochs):
         loss=0
         save_loss=0
+        save_recon_loss=0
         for _,(batch_features, _) in enumerate(tqdm(train_loader)):
             
             # 将小批数据变形为 [N, 784] 矩阵，并加载到 CPU 设备
@@ -180,11 +187,14 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             optimizer.zero_grad()
              
             # 计算重构
-            outputs = ddp_model(batch_features)
- 
+            outputs,_,mu,log_var = ddp_model(batch_features)
+            print('outputs',outputs.shape)
+            # print(latent_feature.shape)
             # 计算训练重建损失
-            train_loss = criterion(outputs, batch_features)
- 
+            train_loss_dict = criterion(outputs, batch_features,mu,log_var)
+            train_loss=train_loss_dict['loss']
+            recon_loss=train_loss_dict['Reconstruction_Loss']
+            KL_loss=train_loss_dict['KLD']
             # 计算累积梯度
             train_loss.backward()
  
@@ -196,12 +206,14 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             # 将小批量训练损失加到周期损失中
             loss += train_loss.item()
             save_loss += train_loss.item()
+            save_recon_loss+= recon_loss.item()
             if iteration % save_every == 0 and rank == 0 and iteration>0:
                 print("interation : {}, train recon loss = {:.8f}".format(iteration, save_loss/save_every))
-                if rank==0:
-                    log("interation : {}, train recon loss = {:.8f}".format(iteration, save_loss/save_every))
+                # if rank==0:
+                log("interation : {}, train recon loss = {:.8f}".format(iteration, save_loss/save_every))
                 save_loss=0
-                validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
+                save_recon_loss=0
+                validate(rank, world_size, ddp_model, test_loader,epoch,iteration,log)
                 checkpoint_path = os.path.join(save_dir,'checkpoints',f'checkpoint_iter_{iteration}.pth')
                 torch.save(ddp_model.state_dict(), checkpoint_path)
                 print(f'Saved checkpoint: {checkpoint_path}')
@@ -210,7 +222,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
         loss = loss / len(train_loader)
         print("epoch : {}/{}, recon loss = {:.8f}".format(epoch + 1, epochs, loss))
         log("epoch : {}/{}, train recon loss = {:.8f}".format(epoch + 1, epochs, loss))
-        val_loss=validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
+        val_loss=validate(rank, world_size, ddp_model, test_loader,epoch,iteration,log)
         if rank == 0 and val_loss is not None and val_loss < best_val_loss:
             best_val_loss = val_loss
             best_model_path = os.path.join(save_dir,'checkpoints','bestmodel.pth')
@@ -223,11 +235,12 @@ def main():
     batch_size=32
     epochs = 100
     learning_rate = 1e-5
+    save_every=50
     print('start')
     world_size = torch.cuda.device_count()
     torch.multiprocessing.set_start_method('spawn', force=True)
     
-    torch.multiprocessing.spawn(train2, args=(world_size,batch_size,learning_rate,epochs), nprocs=world_size, join=True)
+    torch.multiprocessing.spawn(train2, args=(world_size,batch_size,learning_rate,epochs,save_every), nprocs=world_size, join=True)
 
 if __name__ == "__main__":
     main()
