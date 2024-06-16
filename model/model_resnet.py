@@ -173,7 +173,7 @@ class UNet(nn.Module):
         # x = self.up2(x)
         # x = self.up3(x)
         # x = self.up4(x)
-        x=self.encoder(x)
+        x=self.encoder(x1)
         x=self.decoder(x)
         logits = self.outc(x)
         return logits
