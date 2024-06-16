@@ -2,6 +2,7 @@ import os
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
+from loss.loss import GradientPriorLoss
 from model.model_resnet import UNet
 import torch
 import torch.nn as nn
@@ -12,7 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
-save_dir='workdir/(6-15实验)pureAE_加深网络_downsample32'
+save_dir='workdir/(6-15实验)AEwithGPP_加深网络_downsample32'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -164,6 +165,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     print('build loss')
     # 使用均方误差（MSE）损失函数
     criterion = nn.MSELoss().to(rank)
+    GPP_criterion=GradientPriorLoss()
     print('start train')
 
     iteration=0
@@ -184,6 +186,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
  
             # 计算训练重建损失
             train_loss = criterion(outputs, batch_features)
+            train_loss+=GPP_criterion(outputs, batch_features)
  
             # 计算累积梯度
             train_loss.backward()
