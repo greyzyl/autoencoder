@@ -186,7 +186,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
  
             # 计算训练重建损失
             train_loss = criterion(outputs, batch_features)
-            train_loss+=GPP_criterion(outputs, batch_features)
+            train_loss+=GPP_criterion(outputs, batch_features)*1e-4
  
             # 计算累积梯度
             train_loss.backward()
