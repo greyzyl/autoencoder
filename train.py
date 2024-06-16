@@ -54,7 +54,6 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log)
     test_examples = None
     reconstruction=None
     val_loss=0
-    fds
     if rank == 0:
         # 通过循环遍历测试数据加载器，获取一个批次的图像数据
         with torch.no_grad():  # 使用 torch.no_grad() 上下文管理器，确保在该上下文中不会进行梯度计算
