@@ -269,7 +269,7 @@ def main():
     batch_size=6
     epochs = 100
     learning_rate = 1e-5
-    save_every=100
+    save_every=1000
     print('start')
     world_size = torch.cuda.device_count()
     torch.multiprocessing.set_start_method('spawn', force=True)
