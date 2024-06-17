@@ -9,6 +9,10 @@ import torch.nn as nn
 from einops import rearrange, repeat
 from packaging import version
 from inspect import isfunction
+
+from Loss.regularizer import DiagonalGaussianRegularizer
+
+# from loss.regularizer import AbstractRegularizer, DiagonalGaussianRegularizer
 logpy = logging.getLogger(__name__)
 
 try:
@@ -424,15 +428,15 @@ def make_attn(in_channels, attn_type="vanilla", attn_kwargs=None):
         "linear",
         "none",
     ], f"attn_type {attn_type} unknown"
-    if (
-        version.parse(torch.__version__) < version.parse("2.0.0")
-        and attn_type != "none"
-    ):
-        assert XFORMERS_IS_AVAILABLE, (
-            f"We do not support vanilla attention in {torch.__version__} anymore, "
-            f"as it is too expensive. Please install xformers via e.g. 'pip install xformers==0.0.16'"
-        )
-        attn_type = "vanilla-xformers"
+    # if (
+    #     version.parse(torch.__version__) < version.parse("2.0.0")
+    #     and attn_type != "none"
+    # ):
+    #     assert XFORMERS_IS_AVAILABLE, (
+    #         f"We do not support vanilla attention in {torch.__version__} anymore, "
+    #         f"as it is too expensive. Please install xformers via e.g. 'pip install xformers==0.0.16'"
+    #     )
+    #     attn_type = "vanilla-xformers"
     logpy.info(f"making attention of type '{attn_type}' with {in_channels} in_channels")
     if attn_type == "vanilla":
         assert attn_kwargs is None
@@ -557,11 +561,12 @@ class Encoder(nn.Module):
                 hs.append(self.down[i_level].downsample(hs[-1]))
 
         # middle
+        print(h.shape)
         h = hs[-1]
         h = self.mid.block_1(h, temb)
         h = self.mid.attn_1(h)
         h = self.mid.block_2(h, temb)
-
+        print(h.shape)
         # end
         h = self.norm_out(h)
         h = nonlinearity(h)
@@ -728,6 +733,7 @@ class AutoencodingEngine(nn.Module):
         *args,
         encoder,
         decoder,
+        regularizer
         # loss_config: Dict,
         # regularizer_config: Dict,
         # optimizer_config: Union[Dict, None] = None,
@@ -749,7 +755,7 @@ class AutoencodingEngine(nn.Module):
         self.encoder: torch.nn.Module = encoder
         self.decoder: torch.nn.Module = decoder
         # self.loss: torch.nn.Module = instantiate_from_config(loss_config)
-
+        self.regularization=regularizer
         
         # self.regularization: AbstractRegularizer = instantiate_from_config(
         #     regularizer_config
@@ -793,10 +799,10 @@ class AutoencodingEngine(nn.Module):
         z = self.encoder(x)
         # if unregularized:
         #     return z, dict()
-        # z, reg_log = self.regularization(z)
+        z, reg_log = self.regularization(z)
         # if return_reg_log:
         #     return z, reg_log
-        return z
+        return z,reg_log
 
     def decode(self, z: torch.Tensor, **kwargs) -> torch.Tensor:
         x = self.decoder(z, **kwargs)
@@ -805,39 +811,7 @@ class AutoencodingEngine(nn.Module):
     def forward(
         self, x: torch.Tensor, **additional_decode_kwargs
     ) -> Tuple[torch.Tensor, torch.Tensor, dict]:
-        z = self.encode(x)
+        z,reg_log = self.encode(x)
         dec = self.decode(z, **additional_decode_kwargs)
-        return z, dec
-
-if __name__=='__main__':
-    encoder=Encoder(
-        attn_type= 'vanilla-xformers',
-        double_z= True,
-        z_channels= 8,
-        resolution= 256,
-        in_channels= 3,
-        out_ch= 3,
-        ch= 128,
-        ch_mult= [1, 2, 4, 4],
-        num_res_blocks= 2,
-        attn_resolutions= [],
-        dropout= 0.0
-    )
-    decoder=Decoder(
-        attn_type= 'vanilla-xformers',
-        double_z= True,
-        z_channels= 8,
-        resolution= 256,
-        in_channels= 3,
-        out_ch= 3,
-        ch= 128,
-        ch_mult= [1, 2, 4, 4],
-        num_res_blocks= 2,
-        attn_resolutions= [],
-        dropout= 0.0
-    )
-    VAE=AutoencodingEngine(encoder=encoder,decoder=decoder)
-    x=torch.rand((1,3,128,128))
-    z,recon=VAE
-
+        return z, dec,reg_log
 

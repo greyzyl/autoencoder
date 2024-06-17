@@ -3,7 +3,8 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
 
-from loss.loss import VAE_loss
+from Loss.vae_loss import VAE_loss
+from model.SD_VAE import AutoencodingEngine, Decoder, Encoder
 from model.model_resnet import UNet
 import torch
 import torch.nn as nn
@@ -14,8 +15,9 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
-from loss.regularizer import DiagonalGaussianRegularizer
+from Loss.regularizer import DiagonalGaussianRegularizer
 from model import VanillaVAE
+from torch.nn import functional as F
 save_dir='workdir/(6-14实验)VAE_32768'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
@@ -66,7 +68,7 @@ def validate(rank, world_size, model, dataloader,epoch,iteration,log):
                 total += batch_features.size(0)
                 test_examples = batch_features.to(
                     rank)  # 将当前批次的图像数据转换为大小为 (批大小, 784) 的张量，并加载到指定的设备（CPU 或 GPU）上
-                reconstruction,_,_,_ = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
+                _,reconstruction,_ = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
                 
                 val_loss+=criterion(reconstruction, batch_features)
                 break     
@@ -82,14 +84,14 @@ def validate(rank, world_size, model, dataloader,epoch,iteration,log):
         for index in range(number):  # 遍历要显示的图像数量
             # 显示原始图
             ax = plt.subplot(2, number, index + 1)
-            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape(128, 128,3))
+            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape(512, 512,3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
             
             # 显示重构图
             ax = plt.subplot(2, number, index + 1 + number)
-            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape(128, 128,3))
+            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape(512, 512,3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -105,7 +107,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     log=Log(os.path.join(save_dir,'log.txt'))
     log('hhh')
     setup(rank, world_size)
-    resolution=(128,128)
+    resolution=(512,512)
     center_crop =False
     random_flip=False
     torch.cuda.set_device(rank)
@@ -159,9 +161,38 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     #     test_dataset, batch_size=batch_size, shuffle=False,num_workers=1
     # )  # 创建一个测试数据加载器
     print('build model')
-    model = VanillaVAE(3,768*8,[64,125,256,512]).to(rank)
+    encoder=Encoder(
+        attn_type= 'vanilla',
+        double_z= True,
+        z_channels= 8,
+        resolution= 256,
+        in_channels= 3,
+        out_ch= 3,
+        ch= 128,
+        ch_mult= [1, 2, 4, 6,6],
+        num_res_blocks= 2,
+        attn_resolutions= [],
+        dropout= 0.0,
+        resamp_with_conv=False
+    ).to(rank)
+    decoder=Decoder(
+        attn_type= 'vanilla',
+        double_z= True,
+        z_channels= 8,
+        resolution= 256,
+        in_channels= 3,
+        out_ch= 3,
+        ch= 128,
+        ch_mult= [1, 2, 4, 6,6],
+        num_res_blocks= 2,
+        attn_resolutions= [],
+        dropout= 0.0,
+        resamp_with_conv=False
+    ).to(rank)
+    regularizer=DiagonalGaussianRegularizer().to(rank)
+    VAE=AutoencodingEngine(encoder=encoder,decoder=decoder,regularizer=regularizer).to(rank)
     print('build ddp')
-    ddp_model = DDP(model, device_ids=[rank])
+    ddp_model = DDP(VAE, device_ids=[rank])
     print('build opt')
     optimizer = optim.Adam(ddp_model.parameters(), lr=learning_rate)
     lr_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=1000)
@@ -187,14 +218,17 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             optimizer.zero_grad()
              
             # 计算重构
-            outputs,_,mu,log_var = ddp_model(batch_features)
-            print('outputs',outputs.shape)
+            _,outputs,reg_log = ddp_model(batch_features)
+            # print('outputs',outputs.shape)
             # print(latent_feature.shape)
             # 计算训练重建损失
-            train_loss_dict = criterion(outputs, batch_features,mu,log_var)
-            train_loss=train_loss_dict['loss']
-            recon_loss=train_loss_dict['Reconstruction_Loss']
-            KL_loss=train_loss_dict['KLD']
+            train_loss=reg_log['kl_loss']
+            recon_loss=F.mse_loss(outputs, batch_features)
+            train_loss=recon_loss
+            # train_loss_dict = criterion(outputs, batch_features,mu,log_var)
+            # train_loss=train_loss_dict['loss']
+            # recon_loss=train_loss_dict['Reconstruction_Loss']
+            # KL_loss=train_loss_dict['KLD']
             # 计算累积梯度
             train_loss.backward()
  
@@ -232,7 +266,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     cleanup()
 
 def main():
-    batch_size=32
+    batch_size=1
     epochs = 100
     learning_rate = 1e-5
     save_every=50
