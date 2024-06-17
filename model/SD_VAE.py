@@ -561,12 +561,12 @@ class Encoder(nn.Module):
                 hs.append(self.down[i_level].downsample(hs[-1]))
 
         # middle
-        print(h.shape)
+        # print(h.shape)
         h = hs[-1]
         h = self.mid.block_1(h, temb)
         h = self.mid.attn_1(h)
         h = self.mid.block_2(h, temb)
-        print(h.shape)
+        # print(h.shape)
         # end
         h = self.norm_out(h)
         h = nonlinearity(h)

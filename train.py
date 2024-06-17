@@ -18,7 +18,7 @@ import pytorch_warmup as warmup
 from Loss.regularizer import DiagonalGaussianRegularizer
 from model import VanillaVAE
 from torch.nn import functional as F
-save_dir='workdir/(6-14实验)VAE_32768'
+save_dir='workdir/(6-17实验)VAE_downsample16'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -132,34 +132,34 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     '''
     cifar10数据集
     '''
-    train_dataset = torchvision.datasets.CIFAR10(
-        root="./data", train=True, transform=train_transform, download=True
-    )  # 加载 MNIST 数据集的训练集，设置路径、转换和下载为 True
-    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-    train_loader = torch.utils.data.DataLoader(
-        train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=10
-    )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
-    test_dataset = torchvision.datasets.CIFAR10(
-        root="./data", train=False, transform=validation_transform, download=True
-    )  # 加载 MNIST 测试数据集
+    # train_dataset = torchvision.datasets.CIFAR10(
+    #     root="./data", train=True, transform=train_transform, download=True
+    # )  # 加载 MNIST 数据集的训练集，设置路径、转换和下载为 True
+    # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    # train_loader = torch.utils.data.DataLoader(
+    #     train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=10
+    # )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
+    # test_dataset = torchvision.datasets.CIFAR10(
+    #     root="./data", train=False, transform=validation_transform, download=True
+    # )  # 加载 MNIST 测试数据集
  
-    test_loader = torch.utils.data.DataLoader(
-        test_dataset, batch_size=10, shuffle=False
-    )  # 创建一个测试数据加载器
+    # test_loader = torch.utils.data.DataLoader(
+    #     test_dataset, batch_size=10, shuffle=False
+    # )  # 创建一个测试数据加载器
     '''
     vary数据集
     '''
-    # root='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data'
-    # train_dataset = ImageDataset(root,train_transform,mode='train')
-    # train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
-    # train_loader = torch.utils.data.DataLoader(
-    #     train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=4
-    # )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
+    root='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data'
+    train_dataset = ImageDataset(root,train_transform,mode='train')
+    train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
+    train_loader = torch.utils.data.DataLoader(
+        train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=4
+    )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
 
-    # test_dataset = ImageDataset(root,validation_transform,mode='test')
-    # test_loader = torch.utils.data.DataLoader(
-    #     test_dataset, batch_size=batch_size, shuffle=False,num_workers=1
-    # )  # 创建一个测试数据加载器
+    test_dataset = ImageDataset(root,validation_transform,mode='test')
+    test_loader = torch.utils.data.DataLoader(
+        test_dataset, batch_size=batch_size, shuffle=False,num_workers=1
+    )  # 创建一个测试数据加载器
     print('build model')
     encoder=Encoder(
         attn_type= 'vanilla',
@@ -266,10 +266,10 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     cleanup()
 
 def main():
-    batch_size=1
+    batch_size=6
     epochs = 100
     learning_rate = 1e-5
-    save_every=50
+    save_every=100
     print('start')
     world_size = torch.cuda.device_count()
     torch.multiprocessing.set_start_method('spawn', force=True)
