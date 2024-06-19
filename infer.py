@@ -49,7 +49,7 @@ def model_init(pth_path):
     ddp_model.load_state_dict(checkpoint)
     return ddp_model
 if __name__=="__main__":
-    model=model_init('/home/fdu02/fdu02_dir/zyl/code/AE_pure/workdir/(6-13实验)pureAE_加深网络/checkpoints/bestmodel.pth')
+    model=model_init('/home/fdu02/fdu02_dir/zyl/code/AE_pure/workdir/(6-13实验)pureAE_加深网络/checkpoints/checkpoint_iter_14000.pth')
     resolution=(512,512)
     transform= transforms.Compose(
         [
@@ -58,12 +58,14 @@ if __name__=="__main__":
         ]
     )
     criterion = nn.MSELoss().cuda()
-    img=Image.open('/home/fdu02/fdu02_dir/zyl/code/AE_pure/微信图片_20240615113816.jpg')
+    img=Image.open('/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data/test/0.jpg')
     loss,input,recon=infer_single_img(model,img,transform,criterion)
     print(loss)
     plt.figure(figsize=(11, 10)) 
     plt.imshow(recon)
     # plt.gray()
-    plt.savefig('t1.png')
+    plt.gray()
+    plt.axis('off')
+    plt.savefig('t2.png')
 
 

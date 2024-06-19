@@ -137,7 +137,7 @@ class OutConv(nn.Module):
 
 class UNet_ds16(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=False):
-        super(UNet_ds32, self).__init__()
+        super(UNet_ds16, self).__init__()
         self.n_channels = n_channels
         self.n_classes = n_classes
         self.bilinear = bilinear
