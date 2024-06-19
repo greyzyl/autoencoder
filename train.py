@@ -3,7 +3,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
 from loss.loss import GradientPriorLoss
-from model.model_resnet import UNet
+from model.model_resnet import UNet_ds32
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -155,7 +155,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
         test_dataset, batch_size=batch_size, shuffle=False,num_workers=1
     )  # 创建一个测试数据加载器
     print('build model')
-    model = UNet(n_channels=3,n_classes=3).to(rank)
+    model = UNet_ds32(n_channels=3,n_classes=3).to(rank)
     print('build ddp')
     ddp_model = DDP(model, device_ids=[rank])
     print('build opt')

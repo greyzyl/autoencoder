@@ -3,7 +3,7 @@ import cv2
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
-from model.model_resnet import UNet
+from model.model_resnet import UNet_ds16, UNet_ds32
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -43,7 +43,7 @@ def setup(rank, world_size):
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 def model_init(pth_path):
     setup(0,1)
-    model = UNet(n_channels=3,n_classes=3).cuda()
+    model = UNet_ds16(n_channels=3,n_classes=3).cuda()
     ddp_model = DDP(model, device_ids=[0])
     checkpoint=torch.load(pth_path)
     ddp_model.load_state_dict(checkpoint)
