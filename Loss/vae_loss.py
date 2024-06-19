@@ -25,3 +25,4 @@ class VAE_loss(nn.Module):
 
         loss = recons_loss + self.kld_weight * kld_loss
         return {'loss': loss, 'Reconstruction_Loss':recons_loss.detach(), 'KLD':-kld_loss.detach()}
+    
