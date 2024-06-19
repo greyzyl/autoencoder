@@ -13,7 +13,7 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
-save_dir='workdir/(6-16实验)AEwithGPP_加深网络_downsample32'
+save_dir='workdir/(6-16实验)AEwithGPP_GPPW1e-3_加深网络_downsample32'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -186,7 +186,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
  
             # 计算训练重建损失
             train_loss = criterion(outputs, batch_features)
-            train_loss+=GPP_criterion(outputs, batch_features)*1e-4
+            train_loss+=GPP_criterion(outputs, batch_features)*1e-3
  
             # 计算累积梯度
             train_loss.backward()
