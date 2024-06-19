@@ -13,7 +13,8 @@ from torch.nn.parallel import DistributedDataParallel as DDP
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
-save_dir='workdir/(6-16实验)AEwithGPP_GPPW1e-3_加深网络_downsample32'
+import lpips
+save_dir='workdir/(6-19实验)AEwithGPP_GPPW1e-3_preceptual_加深网络_downsample32'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -166,6 +167,8 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     # 使用均方误差（MSE）损失函数
     criterion = nn.MSELoss().to(rank)
     GPP_criterion=GradientPriorLoss()
+
+    loss_fn_vgg = lpips.LPIPS(net='vgg') # best forward scores
     print('start train')
 
     iteration=0
@@ -187,7 +190,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             # 计算训练重建损失
             train_loss = criterion(outputs, batch_features)
             train_loss+=GPP_criterion(outputs, batch_features)*1e-3
- 
+            train_loss+=loss_fn_vgg(outputs, batch_features)*0.25
             # 计算累积梯度
             train_loss.backward()
  
