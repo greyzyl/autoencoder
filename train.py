@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
 import lpips
-save_dir='workdir/(6-19实验)AEwithGPP_GPPW1e-3_preceptual_加深网络_downsample32'
+save_dir='workdir/(6-20实验)1024_AEwithGPP_GPPW0.1_preceptual_加深网络_downsample32'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -75,18 +75,18 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log)
 
         number = 2  # 设置要显示的图像数量
 
-        plt.figure(figsize=(11, 10))  # 创建一个新的 Matplotlib 图形，设置图形大小为 (20, 4)1
+        plt.figure(figsize=(22, 20))  # 创建一个新的 Matplotlib 图形，设置图形大小为 (20, 4)1
         for index in range(number):  # 遍历要显示的图像数量
             # 显示原始图
             ax = plt.subplot(2, number, index + 1)
-            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape(512, 512,3))
+            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape(1024, 1024,3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
             
             # 显示重构图
             ax = plt.subplot(2, number, index + 1 + number)
-            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape(512, 512,3))
+            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape(1024, 1024,3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -102,7 +102,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     log=Log(os.path.join(save_dir,'log.txt'))
 
     setup(rank, world_size)
-    resolution=(512,512)
+    resolution=(1024,1024)
     center_crop =False
     random_flip=False
     torch.cuda.set_device(rank)
@@ -173,6 +173,8 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
 
     iteration=0
     best_val_loss=9999
+    save_recon_loss=0
+    save_gpp_loss=0
     for epoch in range(epochs):
         loss=0
         save_loss=0
@@ -188,10 +190,12 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             outputs = ddp_model(batch_features)
  
             # 计算训练重建损失
-            train_loss = criterion(outputs, batch_features)
-            train_loss+=GPP_criterion(outputs, batch_features)*1e-3
+            recon_loss=criterion(outputs, batch_features)
+            train_loss = recon_loss
+            GPP_loss=GPP_criterion(outputs, batch_features)*0.1
+            train_loss+=GPP_loss
             # print(train_loss)
-            train_loss+=loss_fn_vgg(outputs, batch_features).mean()*0.25
+            # train_loss+=loss_fn_vgg(outputs, batch_features).mean()*0.25
             # 计算累积梯度
             train_loss.backward()
  
@@ -202,12 +206,18 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
  
             # 将小批量训练损失加到周期损失中
             loss += train_loss.item()
+            save_recon_loss+=recon_loss
+            save_gpp_loss+=GPP_loss
             save_loss += train_loss.item()
             if iteration % save_every == 0 and rank == 0 and iteration>0:
-                print("interation : {}, train recon loss = {:.8f}".format(iteration, save_loss/save_every))
+                print("interation : {}, train loss = {:.8f}".format(iteration, save_loss/save_every))
                 if rank==0:
-                    log("interation : {}, train recon loss = {:.8f}".format(iteration, save_loss/save_every))
+                    log("interation : {}, train loss = {:.8f}".format(iteration, save_loss/save_every))
+                    log("interation : {}, train recon loss = {:.8f}".format(iteration, save_recon_loss/save_every))
+                    log("interation : {}, train GPP loss = {:.8f}".format(iteration, save_gpp_loss/save_every))
                 save_loss=0
+                save_recon_loss=0
+                save_gpp_loss=0
                 validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
                 checkpoint_path = os.path.join(save_dir,'checkpoints',f'checkpoint_iter_{iteration}.pth')
                 torch.save(ddp_model.state_dict(), checkpoint_path)
@@ -215,8 +225,8 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             iteration+=1
             # break
         loss = loss / len(train_loader)
-        print("epoch : {}/{}, recon loss = {:.8f}".format(epoch + 1, epochs, loss))
-        log("epoch : {}/{}, train recon loss = {:.8f}".format(epoch + 1, epochs, loss))
+        print("epoch : {}/{}, loss = {:.8f}".format(epoch + 1, epochs, loss))
+        log("epoch : {}/{}, train loss = {:.8f}".format(epoch + 1, epochs, loss))
         val_loss=validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
         if rank == 0 and val_loss is not None and val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -227,7 +237,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     cleanup()
 
 def main():
-    batch_size=32
+    batch_size=10
     epochs = 100
     learning_rate = 1e-5
     print('start')
