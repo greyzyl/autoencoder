@@ -15,6 +15,11 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from PIL import Image
 import pytorch_warmup as warmup
+from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
+def unnormalize(normalized_tensor):
+    unnormalized_tensor = normalized_tensor * torch.tensor(IMAGENET_DEFAULT_STD).view(3, 1, 1).to(normalized_tensor.device) + torch.tensor(IMAGENET_DEFAULT_MEAN).view(3, 1, 1).to(normalized_tensor.device)
+    return unnormalized_tensor
+
 def infer_single_img( model, img,transform, criterion,resolution):
     model.eval()
     img=transform(img)
@@ -29,13 +34,19 @@ def infer_single_img( model, img,transform, criterion,resolution):
         print(batch_features.shape)
         test_examples = batch_features.cuda()
         reconstruction = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
-        
-        val_loss+=criterion(reconstruction, batch_features)
-            # break     
+        '''
+        只使用其中的编码器
+        '''
+        # reconstruction = model.module.inc(test_examples)
+        # reconstruction = model.module.encoder(reconstruction)  
+        # reconstruction = model.module.decoder(reconstruction)
+        # reconstruction = model.module.outc(reconstruction)
+        val_loss+=criterion(reconstruction, batch_features)   
         val_loss=val_loss.cuda()
         total=torch.tensor(total).cuda()
         avg_loss = val_loss.item() / total.item()
-
+        test_examples[0]=unnormalize(test_examples[0])
+        reconstruction[0]=unnormalize(reconstruction[0])
         number = 1  # 设置要显示的图像数量
         input_img,recon_img=test_examples[0].permute(1,2,0).detach().cpu().numpy().reshape(resolution[0], resolution[1],3),\
                             reconstruction[0].permute(1,2,0).cpu().numpy().reshape(resolution[0], resolution[1],3)
@@ -91,6 +102,7 @@ if __name__=="__main__":
         [
             transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
+            transforms.Normalize(IMAGENET_DEFAULT_MEAN,IMAGENET_DEFAULT_STD)
         ]
     )
     criterion = nn.MSELoss().cuda()
@@ -102,5 +114,10 @@ if __name__=="__main__":
     plt.gray()
     plt.axis('off')
     plt.savefig(output_name)
+    plt.figure(figsize=(11, 10)) 
+    plt.imshow(input)
+    plt.gray()
+    plt.axis('off')
+    plt.savefig('input.png')
 
 
