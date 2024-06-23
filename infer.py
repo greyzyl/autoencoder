@@ -15,7 +15,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from PIL import Image
 import pytorch_warmup as warmup
-def infer_single_img( model, img,transform, criterion):
+def infer_single_img( model, img,transform, criterion,resolution):
     model.eval()
     img=transform(img)
     total = 0
@@ -36,11 +36,12 @@ def infer_single_img( model, img,transform, criterion):
         avg_loss = val_loss.item() / total.item()
 
         number = 1  # 设置要显示的图像数量
-        input_img,recon_img=test_examples[0].permute(1,2,0).detach().cpu().numpy().reshape(512, 512,3),reconstruction[0].permute(1,2,0).cpu().numpy().reshape(512, 512,3)
+        input_img,recon_img=test_examples[0].permute(1,2,0).detach().cpu().numpy().reshape(resolution[0], resolution[1],3),
+                            reconstruction[0].permute(1,2,0).cpu().numpy().reshape(resolution[0], resolution[1],3)
     return val_loss,input_img,recon_img
 def setup(rank, world_size):
     os.environ['MASTER_ADDR'] = 'localhost'
-    os.environ['MASTER_PORT'] = '12358'
+    os.environ['MASTER_PORT'] = '12359'
     dist.init_process_group("nccl", rank=rank, world_size=world_size)
 
 def initialize_argparse():
@@ -93,7 +94,7 @@ if __name__=="__main__":
     )
     criterion = nn.MSELoss().cuda()
     img=Image.open(img_path)
-    loss,input,recon=infer_single_img(model,img,transform,criterion)
+    loss,input,recon=infer_single_img(model,img,transform,criterion,resolution)
     print(loss)
     plt.figure(figsize=(11, 10)) 
     plt.imshow(recon)
