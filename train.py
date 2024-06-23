@@ -14,7 +14,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
 import lpips
-save_dir='workdir/(6-20实验)1024_AEwithGPP_GPPW0.1_preceptual_加深网络_downsample32'
+save_dir='workdir/(6-23实验)1024_AEwithGPP_GPPW1e-2_preceptual_加深网络_downsample32'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -192,7 +192,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             # 计算训练重建损失
             recon_loss=criterion(outputs, batch_features)
             train_loss = recon_loss
-            GPP_loss=GPP_criterion(outputs, batch_features)*0.1
+            GPP_loss=GPP_criterion(outputs, batch_features)*1e-2
             train_loss+=GPP_loss
             # print(train_loss)
             # train_loss+=loss_fn_vgg(outputs, batch_features).mean()*0.25
@@ -238,7 +238,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
 
 def main():
     batch_size=10
-    epochs = 100
+    epochs = 15
     learning_rate = 1e-5
     print('start')
     world_size = torch.cuda.device_count()
