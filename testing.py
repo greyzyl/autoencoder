@@ -1,5 +1,5 @@
 import lpips
-loss_fn_alex = lpips.LPIPS(net='alex') # best forward scores ,lpips=False
+loss_fn_alex = lpips.LPIPS(net='vgg') # best forward scores ,lpips=False
 # loss_fn_vgg = lpips.LPIPS(net='vgg',lpips=False) # closer to "traditional" perceptual loss, when used for optimization
 
 import torch
