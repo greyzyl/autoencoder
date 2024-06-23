@@ -1,9 +1,10 @@
+import argparse
 import os
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
 from loss.loss import GradientPriorLoss
-from model.model_resnet import UNet_ds32
+from model.model_resnet import UNet_ds16, UNet_ds32
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -14,7 +15,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 import pytorch_warmup as warmup
 import lpips
-save_dir='workdir/(6-23实验)1024_AEwithGPP_GPPW1e-2_preceptual_加深网络_downsample32'
+# save_path='workdir/(6-23实验)1024_AEwithGPP_GPPW1e-2_preceptual_加深网络_downsample32'
 class Log():
     def __init__(self,file_path, sep=' ', end='\n', file_mode='a'):
         self.file_path=file_path 
@@ -90,16 +91,20 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log)
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
-        print(os.path.join(save_dir,'val_vis',f'reconstruction_results_epoch{epoch}_loss={val_loss}.png'))
-        plt.savefig(os.path.join(save_dir,'val_vis',f'reconstruction_results_epoch{epoch}_loss={val_loss}.png'),dpi=300)  # 保存图像
+        print(os.path.join(save_path,'val_vis',f'reconstruction_results_epoch{epoch}_loss={val_loss}.png'))
+        plt.savefig(os.path.join(save_path,'val_vis',f'reconstruction_results_epoch{epoch}_loss={val_loss}.png'),dpi=300)  # 保存图像
     return val_loss
     
 
-def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
+def train2(rank, world_size,
+           save_path,data_root,
+           batch_size,epochs,save_eval_iteration,learning_rate,
+           downsample_rate,resolution,
+           gradien_loss_weight):
     #init
-    os.makedirs(os.path.join(save_dir,'checkpoints'),exist_ok=True)
-    os.makedirs(os.path.join(save_dir,'val_vis'),exist_ok=True)
-    log=Log(os.path.join(save_dir,'log.txt'))
+    os.makedirs(os.path.join(save_path,'checkpoints'),exist_ok=True)
+    os.makedirs(os.path.join(save_path,'val_vis'),exist_ok=True)
+    log=Log(os.path.join(save_path,'log.txt'))
 
     setup(rank, world_size)
     resolution=(1024,1024)
@@ -144,19 +149,22 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
     '''
     vary数据集
     '''
-    root='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data'
-    train_dataset = ImageDataset(root,train_transform,mode='train')
+    # data_root='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data'
+    train_dataset = ImageDataset(data_root,train_transform,mode='train')
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
     train_loader = torch.utils.data.DataLoader(
         train_dataset, batch_size=batch_size, sampler=train_sampler,num_workers=4
     )  # 创建一个数据加载器，用于加载训练数据，设置批处理大小和是否随机打乱数据
 
-    test_dataset = ImageDataset(root,validation_transform,mode='test')
+    test_dataset = ImageDataset(data_root,validation_transform,mode='test')
     test_loader = torch.utils.data.DataLoader(
         test_dataset, batch_size=batch_size, shuffle=False,num_workers=1
     )  # 创建一个测试数据加载器
     print('build model')
-    model = UNet_ds32(n_channels=3,n_classes=3).to(rank)
+    if downsample_rate==32:
+        model = UNet_ds32(n_channels=3,n_classes=3).to(rank)
+    elif downsample_rate==16:
+        model = UNet_ds16(n_channels=3,n_classes=3).to(rank)
     print('build ddp')
     ddp_model = DDP(model, device_ids=[rank])
     print('build opt')
@@ -192,7 +200,7 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             # 计算训练重建损失
             recon_loss=criterion(outputs, batch_features)
             train_loss = recon_loss
-            GPP_loss=GPP_criterion(outputs, batch_features)*1e-2
+            GPP_loss=GPP_criterion(outputs, batch_features)*gradien_loss_weight
             train_loss+=GPP_loss
             # print(train_loss)
             # train_loss+=loss_fn_vgg(outputs, batch_features).mean()*0.25
@@ -209,17 +217,17 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
             save_recon_loss+=recon_loss
             save_gpp_loss+=GPP_loss
             save_loss += train_loss.item()
-            if iteration % save_every == 0 and rank == 0 and iteration>0:
-                print("interation : {}, train loss = {:.8f}".format(iteration, save_loss/save_every))
+            if iteration % save_eval_iteration == 0 and rank == 0 and iteration>0:
+                print("interation : {}, train loss = {:.8f}".format(iteration, save_loss/save_eval_iteration))
                 if rank==0:
-                    log("interation : {}, train loss = {:.8f}".format(iteration, save_loss/save_every))
-                    log("interation : {}, train recon loss = {:.8f}".format(iteration, save_recon_loss/save_every))
-                    log("interation : {}, train GPP loss = {:.8f}".format(iteration, save_gpp_loss/save_every))
+                    log("interation : {}, train loss = {:.8f}".format(iteration, save_loss/save_eval_iteration))
+                    log("interation : {}, train recon loss = {:.8f}".format(iteration, save_recon_loss/save_eval_iteration))
+                    log("interation : {}, train GPP loss = {:.8f}".format(iteration, save_gpp_loss/save_eval_iteration))
                 save_loss=0
                 save_recon_loss=0
                 save_gpp_loss=0
                 validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
-                checkpoint_path = os.path.join(save_dir,'checkpoints',f'checkpoint_iter_{iteration}.pth')
+                checkpoint_path = os.path.join(save_path,'checkpoints',f'checkpoint_iter_{iteration}.pth')
                 torch.save(ddp_model.state_dict(), checkpoint_path)
                 print(f'Saved checkpoint: {checkpoint_path}')
             iteration+=1
@@ -230,21 +238,66 @@ def train2(rank, world_size,batch_size,learning_rate,epochs,save_every=500):
         val_loss=validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
         if rank == 0 and val_loss is not None and val_loss < best_val_loss:
             best_val_loss = val_loss
-            best_model_path = os.path.join(save_dir,'checkpoints','bestmodel.pth')
+            best_model_path = os.path.join(save_path,'checkpoints','bestmodel.pth')
             torch.save(ddp_model.state_dict(), best_model_path)
             print(f'Saved best model: {best_model_path}, Validation Loss: {val_loss:.4f}')
         # break
     cleanup()
+def initialize_argparse():
+    """
+    Initialize argparse for command line arguments.
+    
+    Returns:
+        argparse.ArgumentParser: An argument parser object which can be used to parse the command line arguments.
+    """
+    parser = argparse.ArgumentParser(description="A simple script to process an input file and generate an output.")
+    
+    # 添加命令行参数
+    parser.add_argument("--save_path",
+                        default='workdir/(6-23实验)1024_AEwithGPP_GPPW1e-2_preceptual_加深网络_downsample32', 
+                        help="Path to the save dir", required=True, type=str)
+    parser.add_argument("--data_root",
+                        default='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data',
+                          help="Path to the data dir", required=True, type=str)
+    parser.add_argument("--batch_size",default=10 ,  required=True, type=int)
+    parser.add_argument("--epochs",default=15,   required=True, type=int)
+    parser.add_argument("--learning_rate", "-lr", default=1e-5, required=True, type=float)
+    parser.add_argument("--downsample_rate",default=32,  required=True, type=int)
+    parser.add_argument("--gradien_loss_weight",default=1e-3,   required=True, type=float)
+    parser.add_argument("--resolution",default=1024,   required=True, type=int)
+    parser.add_argument("--save_eval_iteration",  default=500, required=True, type=int)
+    
+    
+    # 解析之前可以添加更多参数或设置
+    
+    return parser
 
 def main():
-    batch_size=10
-    epochs = 15
-    learning_rate = 1e-5
+    parser=initialize_argparse()
+    args=parser.parse_args()
+    save_path=args.save_path
+    data_root=args.data_root
+    batch_size=args.batch_size
+    epochs=args.epochs
+    downsample_rate=args.downsample_rate
+    gradien_loss_weight=args.gradien_loss_weight
+    resolution=args.resolution
+    resolution=(resolution,resolution)
+    save_eval_iteration=args.save_eval_iteration
+    learning_rate=args.learning_rate
     print('start')
     world_size = torch.cuda.device_count()
     torch.multiprocessing.set_start_method('spawn', force=True)
     
-    torch.multiprocessing.spawn(train2, args=(world_size,batch_size,learning_rate,epochs), nprocs=world_size, join=True)
+    torch.multiprocessing.spawn(train2, 
+                                args=(
+                                        world_size,
+                                        save_path,data_root,
+                                        batch_size,epochs,save_eval_iteration,learning_rate,
+                                        downsample_rate,resolution,
+                                        gradien_loss_weight
+                                    ), 
+                                nprocs=world_size, join=True)
 
 if __name__ == "__main__":
     main()
