@@ -26,6 +26,7 @@ def infer_single_img( model, img,transform, criterion,resolution):
     with torch.no_grad():  # 使用 torch.no_grad() 上下文管理器，确保在该上下文中不会进行梯度计算
         batch_features = img.unsqueeze(0).cuda()  
         total += batch_features.size(0)
+        print(batch_features.shape)
         test_examples = batch_features.cuda()
         reconstruction = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
         
@@ -54,11 +55,11 @@ def initialize_argparse():
     parser = argparse.ArgumentParser(description="A simple script to process an input file and generate an output.")
     
     # 添加命令行参数
-    parser.add_argument("--model_path",help="Path to the checkpoint",default="/home/fdu02/fdu02_dir/zyl/code/AE_pure/workdir/(6-13实验)pureAE_加深网络/checkpoints/bestmodel.pth", required=True, type=str)
-    parser.add_argument("--img_path",help="Path to the data dir",default="/home/fdu02/fdu02_dir/zyl/code/AE_pure/微信图片_20240615113816.jpg", required=True, type=str)
-    parser.add_argument("--output_name",default='t.png',   required=True, type=str)
-    parser.add_argument("--downsample_rate",default=32,  required=True, type=int)
-    parser.add_argument("--resolution",default=1024,   required=True, type=int)
+    parser.add_argument("--model_path",help="Path to the checkpoint",default="/home/fdu02/fdu02_dir/zyl/code/AE_pure/workdir/(6-21实验)1024_AEwithGPP_GPPW1e-3_preceptual_加深网络_downsample32/checkpoints/bestmodel.pth", type=str)
+    parser.add_argument("--img_path",help="Path to the data dir",default="/home/fdu02/fdu02_dir/zyl/code/AE_pure/微信图片_20240615113816.jpg", type=str)
+    parser.add_argument("--output_name",default='t.png', type=str)
+    parser.add_argument("--downsample_rate",default=32,   type=int)
+    parser.add_argument("--resolution",default=1024,    type=int)
 
     
     # 解析之前可以添加更多参数或设置
@@ -73,7 +74,7 @@ def model_init(pth_path,downsample_rate):
         model = UNet_ds16(n_channels=3,n_classes=3).cuda()
     ddp_model = DDP(model, device_ids=[0])
     checkpoint=torch.load(pth_path)
-    ddp_model.load_state_dict(checkpoint)
+    ddp_model.load_state_dict(checkpoint,strict=True)
     return ddp_model
 
 if __name__=="__main__":
@@ -83,7 +84,7 @@ if __name__=="__main__":
     img_path=args.img_path
     output_name=args.output_name
     downsample_rate=args.downsample_rate
-    resolution=args.downsample_rate
+    resolution=args.resolution
     model=model_init(model_path,downsample_rate)
     resolution=(resolution,resolution)
     transform= transforms.Compose(
@@ -93,7 +94,7 @@ if __name__=="__main__":
         ]
     )
     criterion = nn.MSELoss().cuda()
-    img=Image.open(img_path)
+    img=Image.open(img_path).convert('RGB')
     loss,input,recon=infer_single_img(model,img,transform,criterion,resolution)
     print(loss)
     plt.figure(figsize=(11, 10)) 
