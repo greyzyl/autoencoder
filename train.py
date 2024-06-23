@@ -50,7 +50,7 @@ def setup(rank, world_size):
 def cleanup():
     dist.destroy_process_group()
 
-def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log):
+def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log,save_path,resolution):
     model.eval()
     total = 0
     test_examples = None
@@ -80,14 +80,14 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log)
         for index in range(number):  # 遍历要显示的图像数量
             # 显示原始图
             ax = plt.subplot(2, number, index + 1)
-            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape(1024, 1024,3))
+            plt.imshow(test_examples[index].permute(1,2,0).detach().cpu().numpy().reshape( resolution[0],  resolution[1],3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
             
             # 显示重构图
             ax = plt.subplot(2, number, index + 1 + number)
-            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape(1024, 1024,3))
+            plt.imshow(reconstruction[index].permute(1,2,0).cpu().numpy().reshape( resolution[0],  resolution[1],3))
             plt.gray()
             ax.get_xaxis().set_visible(False)
             ax.get_yaxis().set_visible(False)
@@ -107,7 +107,6 @@ def train2(rank, world_size,
     log=Log(os.path.join(save_path,'log.txt'))
 
     setup(rank, world_size)
-    resolution=(1024,1024)
     center_crop =False
     random_flip=False
     torch.cuda.set_device(rank)
@@ -226,7 +225,7 @@ def train2(rank, world_size,
                 save_loss=0
                 save_recon_loss=0
                 save_gpp_loss=0
-                validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
+                validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log,save_path,resolution)
                 checkpoint_path = os.path.join(save_path,'checkpoints',f'checkpoint_iter_{iteration}.pth')
                 torch.save(ddp_model.state_dict(), checkpoint_path)
                 print(f'Saved checkpoint: {checkpoint_path}')
