@@ -33,20 +33,21 @@ def infer_single_img( model, img,transform, criterion,resolution):
         total += batch_features.size(0)
         print(batch_features.shape)
         test_examples = batch_features.cuda()
-        reconstruction = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
+        # reconstruction = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
         '''
         只使用其中的编码器
         '''
-        # reconstruction = model.module.inc(test_examples)
-        # reconstruction = model.module.encoder(reconstruction)  
-        # reconstruction = model.module.decoder(reconstruction)
-        # reconstruction = model.module.outc(reconstruction)
+        encoder=model.encoder
+        reconstruction = model.inc(test_examples)
+        reconstruction = encoder(reconstruction)  
+        reconstruction = model.decoder(reconstruction)
+        reconstruction = model.outc(reconstruction)
         val_loss+=criterion(reconstruction, batch_features)   
         val_loss=val_loss.cuda()
         total=torch.tensor(total).cuda()
         avg_loss = val_loss.item() / total.item()
-        test_examples[0]=unnormalize(test_examples[0])
-        reconstruction[0]=unnormalize(reconstruction[0])
+        # test_examples[0]=unnormalize(test_examples[0])
+        # reconstruction[0]=unnormalize(reconstruction[0])
         number = 1  # 设置要显示的图像数量
         input_img,recon_img=test_examples[0].permute(1,2,0).detach().cpu().numpy().reshape(resolution[0], resolution[1],3),\
                             reconstruction[0].permute(1,2,0).cpu().numpy().reshape(resolution[0], resolution[1],3)
@@ -79,14 +80,15 @@ def initialize_argparse():
 
 def model_init(pth_path,downsample_rate):
     setup(0,1)
-    if downsample_rate==32:
-        model = UNet_ds32(n_channels=3,n_classes=3).cuda()
-    elif downsample_rate==16:
-        model = UNet_ds16(n_channels=3,n_classes=3).cuda()
+    # if downsample_rate==32:
+    model = UNet_ds32(n_channels=3,n_classes=3).cuda()
+    # elif downsample_rate==16:
+    #     model = UNet_ds16(n_channels=3,n_classes=3).cuda()
     ddp_model = DDP(model, device_ids=[0])
-    checkpoint=torch.load(pth_path)
-    ddp_model.load_state_dict(checkpoint,strict=True)
-    return ddp_model
+    checkpoint={k.replace('module.', ''): v for k, v in                 
+                       torch.load(pth_path).items()}
+    model.load_state_dict(checkpoint,strict=True)
+    return model
 
 if __name__=="__main__":
     parser=initialize_argparse()
@@ -102,7 +104,7 @@ if __name__=="__main__":
         [
             transforms.Resize(resolution, interpolation=transforms.InterpolationMode.BILINEAR),
             transforms.ToTensor(),
-            transforms.Normalize(IMAGENET_DEFAULT_MEAN,IMAGENET_DEFAULT_STD)
+            # transforms.Normalize(IMAGENET_DEFAULT_MEAN,IMAGENET_DEFAULT_STD)
         ]
     )
     criterion = nn.MSELoss().cuda()
