@@ -59,7 +59,7 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log,
     if rank == 0:
         # 通过循环遍历测试数据加载器，获取一个批次的图像数据
         with torch.no_grad():  # 使用 torch.no_grad() 上下文管理器，确保在该上下文中不会进行梯度计算
-            for _,batch_features in tqdm(enumerate(dataloader)):  # 历测试数据加载器中的每个批次的图像数据
+            for i,batch_features in tqdm(enumerate(dataloader)):  # 历测试数据加载器中的每个批次的图像数据
                 batch_features = batch_features[0].to(rank)  # 获取当前批次的图像数据
                 total += batch_features.size(0)
                 test_examples = batch_features.to(
@@ -67,7 +67,8 @@ def validate(rank, world_size, model, dataloader, criterion,epoch,iteration,log,
                 reconstruction = model(test_examples)  # 使用训练好的自编码器模型对测试数据进行重构，即生成重构的图像
                 
                 val_loss+=criterion(reconstruction, batch_features)
-                # break     
+                # if i>5:
+                #     break   
         val_loss=val_loss.to(rank)
         total=torch.tensor(total).to(rank)
         avg_loss = val_loss.item() / total.item()
@@ -178,7 +179,7 @@ def train2(rank, world_size,
     criterion = nn.MSELoss().to(rank)
     GPP_criterion=GradientPriorLoss().to(rank)
 
-    loss_fn_vgg = lpips.LPIPS(net='vgg').to(rank) # best forward scores
+    # loss_fn_vgg = lpips.LPIPS(net='vgg').to(rank) # best forward scores
     print('start train')
 
     iteration=0
@@ -233,11 +234,12 @@ def train2(rank, world_size,
                 torch.save(ddp_model.state_dict(), checkpoint_path)
                 print(f'Saved checkpoint: {checkpoint_path}')
             iteration+=1
-            # break
+            # if iteration>5:
+            #     break
         loss = loss / len(train_loader)
         print("epoch : {}/{}, loss = {:.8f}".format(epoch + 1, epochs, loss))
         log("epoch : {}/{}, train loss = {:.8f}".format(epoch + 1, epochs, loss))
-        val_loss=validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log)
+        val_loss=validate(rank, world_size, ddp_model, test_loader, criterion,epoch,iteration,log,save_path,resolution)
         if rank == 0 and val_loss is not None and val_loss < best_val_loss:
             best_val_loss = val_loss
             best_model_path = os.path.join(save_path,'checkpoints','bestmodel.pth')
