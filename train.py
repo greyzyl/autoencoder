@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
 from loss.loss import GradientPriorLoss
-from model.model_resnet import UNet_ds16, UNet_ds32, UNet_ds64
+from model.model_resnet import UNet_ds16, UNet_ds32, UNet_ds64_deep_channel, UNet_ds64_ori
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -165,7 +165,8 @@ def train2(rank, world_size,
     elif downsample_rate==16:
         model = UNet_ds16(n_channels=3,n_classes=3).to(rank)
     elif downsample_rate==64:
-        model = UNet_ds64(n_channels=3,n_classes=3).to(rank)
+        # model = UNet_ds64_ori(n_channels=3,n_classes=3).to(rank)
+        model = UNet_ds64_deep_channel(n_channels=3,n_classes=3).to(rank)
     print('build ddp')
     ddp_model = DDP(model, device_ids=[rank])
     print('build opt')
