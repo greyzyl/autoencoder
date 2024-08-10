@@ -143,15 +143,15 @@ class UNet_ds8(nn.Module):
         self.bilinear = bilinear
 
         self.inc = (DoubleConv(n_channels, 64))
-        self.down1 = (deep_Down(64, 128))
-        self.down2 = (deep_Down(128, 192))
-        self.down3 = (deep_Down(192, 192))
+        self.down1 = (deep_Down(64, 96))
+        self.down2 = (deep_Down(96, 96))
+        self.down3 = (deep_Down(96, 96))
         self.encoder=nn.Sequential(
             self.down1,self.down2,self.down3
         )
-        self.up1 = (deep_Up_without_res(192, 192 , bilinear))
-        self.up2 = (deep_Up_without_res(192, 128 , bilinear))
-        self.up3 = (deep_Up_without_res(128, 64, bilinear))
+        self.up1 = (deep_Up_without_res(96, 96 , bilinear))
+        self.up2 = (deep_Up_without_res(96, 96 , bilinear))
+        self.up3 = (deep_Up_without_res(96, 64, bilinear))
         self.decoder=nn.Sequential(
             self.up1,self.up2,self.up3
         )
