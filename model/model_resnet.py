@@ -135,6 +135,35 @@ class OutConv(nn.Module):
         return self.conv(x)
     """ Full assembly of the parts to form the complete network """
 
+class UNet_ds8(nn.Module):
+    def __init__(self, n_channels, n_classes, bilinear=False):
+        super(UNet_ds8, self).__init__()
+        self.n_channels = n_channels
+        self.n_classes = n_classes
+        self.bilinear = bilinear
+
+        self.inc = (DoubleConv(n_channels, 64))
+        self.down1 = (deep_Down(64, 128))
+        self.down2 = (deep_Down(128, 192))
+        self.down3 = (deep_Down(192, 192))
+        self.encoder=nn.Sequential(
+            self.down1,self.down2,self.down3
+        )
+        self.up1 = (deep_Up_without_res(192, 192 , bilinear))
+        self.up2 = (deep_Up_without_res(192, 128 , bilinear))
+        self.up3 = (deep_Up_without_res(128, 64, bilinear))
+        self.decoder=nn.Sequential(
+            self.up1,self.up2,self.up3
+        )
+        self.outc = (OutConv(64, n_classes))
+
+    def forward(self, x):
+        x = self.inc(x)
+        x=self.encoder(x)
+        x=self.decoder(x)
+        logits = self.outc(x)
+        return logits
+
 class UNet_ds16(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=False):
         super(UNet_ds16, self).__init__()
@@ -257,6 +286,7 @@ class UNet_ds64_ori(nn.Module):
         x=self.decoder(x)
         logits = self.outc(x)
         return logits
+
 class UNet_ds64_deep_channel(nn.Module):
     def __init__(self, n_channels, n_classes, bilinear=False):
         super(UNet_ds64_deep_channel, self).__init__()

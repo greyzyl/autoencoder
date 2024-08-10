@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 from tqdm import tqdm
 from dataset import ImageDataset
 from loss.loss import GradientPriorLoss
-from model.model_resnet import UNet_ds16, UNet_ds32, UNet_ds64_deep_channel, UNet_ds64_ori
+from model.model_resnet import UNet_ds16, UNet_ds32, UNet_ds64_deep_channel, UNet_ds64_ori, UNet_ds8
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -149,7 +149,6 @@ def train2(rank, world_size,
     '''
     vary数据集
     '''
-    # data_root='/home/fdu02/fdu02_dir/zyl/code/diffusers-main/data/vary_data'
     train_dataset = ImageDataset(data_root,train_transform,mode='train')
     train_sampler = torch.utils.data.distributed.DistributedSampler(train_dataset, num_replicas=world_size, rank=rank)
     train_loader = torch.utils.data.DataLoader(
@@ -163,6 +162,9 @@ def train2(rank, world_size,
     print('build model')
     if downsample_rate==32:
         model = UNet_ds32(n_channels=3,n_classes=3).to(rank)
+
+    elif downsample_rate==8:
+        model = UNet_ds8(n_channels=3,n_classes=3).to(rank)
     elif downsample_rate==16:
         model = UNet_ds16(n_channels=3,n_classes=3).to(rank)
     elif downsample_rate==64:
@@ -247,6 +249,7 @@ def train2(rank, world_size,
             print(f'Saved best model: {best_model_path}, Validation Loss: {val_loss:.4f}')
         # break
     cleanup()
+
 def initialize_argparse():
     """
     Initialize argparse for command line arguments.
